@@ -1,0 +1,476 @@
+<!doctype><html><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Assim não VALE</title>
+  <meta name="description" content="Mapeamento de casos de violações de direitos humanos causados pela Vale e pelo ciclo de mineração ao redor do mundo.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="icon" type="image/x-icon" href="http://cartodb.github.io/odyssey.js/sandbox/favicon.png">
+  <link rel="icon" type="image/png" href="http://cartodb.github.io/odyssey.js/sandbox/favicon.png">
+
+  <link rel="stylesheet" href="http://cartodb-libs.global.ssl.fastly.net/cartodb.js/v3/themes/css/cartodb.css">
+  <link rel="stylesheet" href="http://cartodb.github.io/odyssey.js/sandbox/css/slides.css">
+  <script src="http://cartodb.github.io/odyssey.js/vendor/modernizr-2.6.2.min.js"></script>
+
+  <!-- Tags Facebook -->
+  <meta property="og:title" content="Assim não VALE" />
+  <meta property="og:image" content="http://i.imgur.com/BlWf4jY.png" />
+  <meta property="og:description" content="" />
+  <meta property="og:url" content="http://cmi-rio.github.io/assim-nao-vale/">
+</head>
+<body>
+  <div id="map" style="width: 100%; height: 100%;"></div>
+
+  <div id="slides_container" style="display:block;">
+    <div id="dots"></div>
+
+    <div id="slides"></div>
+
+    <ul id="navButtons">
+      <li><a class="prev"></a></li>
+      <li><a class="next"></a></li>
+    </ul>
+  </div>
+
+  <div id="credits">
+    <span class="title" id="title">Title</span>
+    <span class="author"><strong id="author">Feito com</strong> <a href="http://cartodb.github.io/odyssey.js/">Odyssey.js</a><span>
+  </span></span></div>
+
+  <script src="http://cartodb-libs.global.ssl.fastly.net/cartodb.js/v3/cartodb.js"></script>
+  <script src="http://cartodb.github.io/odyssey.js/dist/odyssey.js" charset="UTF-8"></script>
+
+  <script>
+    var resizePID;
+
+    function clearResize() {
+      clearTimeout(resizePID);
+      resizePID = setTimeout(function() { adjustSlides(); }, 100);
+    }
+
+    if (!window.addEventListener) {
+      window.attachEvent("resize", function load(event) {
+        clearResize();
+      });
+    } else {
+      window.addEventListener("resize", function load(event) {
+        clearResize();
+      });
+    }
+
+    function adjustSlides() {
+      var container = document.getElementById("slides_container"),
+          slide = document.querySelectorAll('.selected_slide')[0];
+
+      if (slide) {
+        if (slide.offsetHeight+169+40+80 >= window.innerHeight) {
+          container.style.bottom = "80px";
+
+          var h = container.offsetHeight;
+
+          slide.style.height = h-169+"px";
+          slide.classList.add("scrolled");
+        } else {
+          container.style.bottom = "auto";
+          container.style.minHeight = "0";
+
+          slide.style.height = "auto";
+          slide.classList.remove("scrolled");
+        }
+      }
+    }
+
+    var resizeAction = O.Action(function() {
+      function imageLoaded() {
+        counter--;
+
+        if (counter === 0) {
+          adjustSlides();
+        }
+      }
+      var images = $('img');
+      var counter = images.length;
+
+      images.each(function() {
+        if (this.complete) {
+          imageLoaded.call( this );
+        } else {
+          $(this).one('load', imageLoaded);
+        }
+      });
+    });
+
+    function click(el) {
+      var element = O.Core.getElement(el);
+      var t = O.Trigger();
+
+      // TODO: clean properly
+      function click() {
+        t.trigger();
+      }
+
+      if (element) element.onclick = click;
+
+      return t;
+    }
+
+    O.Template({
+      init: function() {
+        var seq = O.Triggers.Sequential();
+
+        var baseurl = this.baseurl = 'http://{s}.api.cartocdn.com/base-light/{z}/{x}/{y}.png';
+        var map = this.map = L.map('map').setView([0, 0.0], 4);
+        var basemap = this.basemap = L.tileLayer(baseurl, {
+          attribution: 'data OSM - map CartoDB'
+        }).addTo(map);
+
+        // enanle keys to move
+        O.Keys().on('map').left().then(seq.prev, seq)
+        O.Keys().on('map').right().then(seq.next, seq)
+
+        click(document.querySelectorAll('.next')).then(seq.next, seq)
+        click(document.querySelectorAll('.prev')).then(seq.prev, seq)
+
+        var slides = O.Actions.Slides('slides');
+        var story = O.Story()
+
+        this.story = story;
+        this.seq = seq;
+        this.slides = slides;
+        this.progress = O.UI.DotProgress('dots').count(0);
+      },
+
+      update: function(actions) {
+        var self = this;
+
+        if (!actions.length) return;
+
+        this.story.clear();
+
+        if (this.baseurl && (this.baseurl !== actions.global.baseurl)) {
+          this.baseurl = actions.global.baseurl || 'http://0.api.cartocdn.com/base-light/{z}/{x}/{y}.png';
+
+          this.basemap.setUrl(this.baseurl);
+        }
+
+        if (this.cartoDBLayer && ("http://"+self.cartoDBLayer.options.user_name+".cartodb.com/api/v2/viz/"+self.cartoDBLayer.options.layer_definition.stat_tag+"/viz.json" !== actions.global.vizjson)) {
+          this.map.removeLayer(this.cartoDBLayer);
+
+          this.cartoDBLayer = null;
+          this.created = false;
+        }
+
+        if (actions.global.vizjson && !this.cartoDBLayer) {
+          if (!this.created) { // sendCode debounce < vis loader
+            cdb.vis.Loader.get(actions.global.vizjson, function(vizjson) {
+              self.map.fitBounds(vizjson.bounds);
+
+              cartodb.createLayer(self.map, vizjson)
+                .done(function(layer) {
+                  self.cartoDBLayer = layer;
+
+                  var sublayer = layer.getSubLayer(0),
+                      layer_name = layer.layers[0].options.layer_name,
+                      filter = actions.global.cartodb_filter ? " WHERE "+actions.global.cartodb_filter : "";
+
+                  sublayer.setSQL("SELECT * FROM "+layer_name+filter)
+
+                  self.map.addLayer(layer);
+
+                  self._resetActions(actions);
+                }).on('error', function(err) {
+                  console.log("some error occurred: " + err);
+                });
+            });
+
+            this.created = true;
+          }
+
+          return;
+        }
+
+        this._resetActions(actions);
+      },
+
+      _resetActions: function(actions) {
+        // update footer title and author
+        var title_ = actions.global.title === undefined ? '' : actions.global.title,
+            author_ = actions.global.author === undefined ? 'Using' : 'CMI-RIO '+actions.global.author+' +';
+
+        document.getElementById('title').innerHTML = title_;
+        document.getElementById('author').innerHTML = author_;
+        document.title = title_ + " | " + author_ +' Odyssey.js';
+
+        var sl = actions;
+
+        document.getElementById('slides').innerHTML = ''
+        this.progress.count(sl.length);
+
+        // create new story
+        for(var i = 0; i < sl.length; ++i) {
+          var slide = sl[i];
+          var tmpl = "<div class='slide' style='diplay:none'>";
+
+          tmpl += slide.html();
+          tmpl += "</div>";
+          document.getElementById('slides').innerHTML += tmpl;
+
+          this.progress.step(i).then(this.seq.step(i), this.seq)
+
+          var actions = O.Parallel(
+            this.slides.activate(i),
+            slide(this),
+            this.progress.activate(i),
+            resizeAction
+          );
+
+          actions.on("finish.app", function() {
+            adjustSlides();
+          });
+
+          this.story.addState(
+            this.seq.step(i),
+            actions
+          )
+        }
+
+        this.story.go(this.seq.current());
+      },
+
+      changeSlide: function(n) {
+        this.seq.current(n);
+      }
+    });
+  </script>
+
+  <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-20934186-21', 'cartodb.github.io');
+    ga('send', 'pageview');
+  </script>
+
+  <script type="text/javascript" src="http://fast.fonts.net/jsapi/3af16084-ba56-49ca-b37d-0b49b59e1927.js"></script>
+
+<script id="md_template" type="text/template">```
+-baseurl: "https://2.maps.nlp.nokia.com/maptile/2.1/maptile/newest/normal.day/{z}/{x}/{y}/256/png8?lg=eng&token=A7tBPacePg9Mj_zghvKt9Q&app_id=KuYppsdXZznpffJsKT24"
+-title: "Assim não vale: 16 fatos sobre a vale e o ciclo da mineração ao redor do mundo."
+-author: ""
+```
+
+#Assim não VALE
+```
+L.marker([37.7620, -122.4385]).actions.addRemove(S.map)
+L.marker([-5.9944299, -49.8968993,17]).actions.addRemove(S.map)
+L.marker([-5.1607, -80.6644]).actions.addRemove(S.map)
+L.marker([-6.7574, -51.0864]).actions.addRemove(S.map)
+L.marker([-1.890384, -48.7766269,15]).actions.addRemove(S.map)
+L.marker([-20.3427, -43.4207]).actions.addRemove(S.map)
+L.marker([-22.9042, -43.7249]).actions.addRemove(S.map)
+L.marker([1.3732, -72.0483]).actions.addRemove(S.map)
+L.marker([-14.3815, 37.6611]).actions.addRemove(S.map)
+L.marker([-4.8924, -47.4047]).actions.addRemove(S.map)
+L.marker([-22.9938, -43.3521]).actions.addRemove(S.map)
+L.marker([-20.0721, -43.4454]).actions.addRemove(S.map)
+- center: [-20.2867, -43.3630]
+- zoom: 2
+```
+
+## Mapeamento de 16 casos de violações ambientais e de direitos humanos causadas pela Vale e pelo ciclo de mineração ao redor do mundo.
+
+Introdução:
+
+Comunidades, indígenas, quilombolas, pescadores e trabalhadores sofrem constante pressão, através da exploração das minas, construção de rodovias, portos, hidrovias, ferrovias, hidroelétricas e outros empreendimentos que conectam a cadeia da mineração, colocando em risco a reprodução física, social, econômica e cultural dos territórios. A tragédia provocada pela Samarco/Vale em Mariana não foi um acidente isolado como afirma alguns. Ela decorre do modelo de exploração da cadeia mineradora que, em todas as suas etapas, causa profundos impactos sociais e ambientais. Na mapa percorrermos locais em que a Vale atua destacando os principais impactos decorrentes de sua presença e da mineração.
+
+Este site é uma adaptação livre do infográfico disponível em http://bit.ly/mariananaofoiacidente
+
+
+# 1. Instalação sem consentimento
+```
+- center: [-5.9944299, -49.8968993,17]
+- zoom: 9
+L.marker([-5.9944299, -49.8968993,17]).actions.addRemove(S.map)
+L.marker([-5.9917, -49.8972]).actions.addRemove(S.map)
+```
+##Duplicação da Estrada de ferro Carajás
+O Ibama aprovou licenciamento simplificado, que isenta a Vale da elaboração do EIA-Rima e da realização de audiências públicas e consulta para a indagação sobre o consentimento prévio, livre e informado das comunidades tradicionais impactadas.
+
+# 2. Exploração de fosfato sem consulta prévia
+```
+- center: [-5.1634, -80.6644]
+- zoom: 9
+L.marker([-5.1607, -80.6644]).actions.addRemove(S.map)
+```
+##Piura, Peru
+Em Piura (Peru), representantes da Frente de Defesa da Comunidade de San Mantin de Sechura denunciam que a Vale iniciou a exploração de Fosfato em 2010, sem consulta prévia, descumprindo o convênio 169 da Organização Internacional do Trabalho (OIT).
+
+
+#3. Impacto na saúde de comunidades indígenas
+```
+- center: [-6.7537254, -51.0895625,16.47]
+- zoom:7
+L.marker([-6.7574, -51.0864]).actions.addRemove(S.map)
+```
+
+## Onça Puma, PA
+Segundo o Ministério Público Federal, apesar dos impactos na saúde dos/as indígenas Xikrin (PA), a Vale não iniciou nenhum programa de compensação e não cumpriu nenhuma das condicionantes previstas.
+
+#4. Sem licença para operar
+```
+- center: [-22.9041597, -43.7249473,17]
+- zoom:10
+L.marker([-6.7574, -51.0864]).actions.addRemove(S.map)
+L.marker([-22.9042, -43.7249]).actions.addRemove(S.map)
+```
+## Santa Cruz, Rio de Janeiro, RJ
+
+Desde 2010, a [Companhia Siderúrgica do Atlântico (TKCSA)](http://paretkcsa.org) opera em Santa Cruz, no Rio de Janeiro, sem licença de operação, através de Termo de Ajustamento de Conduta (TAC).
+
+#5. Destruição social, ambiental e econômica
+```
+- center: [-3.0810838, -51.8091777,13]
+- zoom:10
+L.marker([-3.0810838, -51.8091777,13]).actions.addRemove(S.map)
+L.marker([-3.0811, -51.8092]).actions.addRemove(S.map)
+```
+## Hidroelétrica Belo Monte, PA
+
+Com participação acionária da Vale, o projeto tem sido criticado por provocar grande destruição social, ambiental e econômica. Ao menos 20 processos judiciais são movidos pelo Ministério Público Fede-
+ral, do Pará, devido a problemas de licenciamento, descumprimento de condicionantes, impactos irreversíveis, entre outros.
+
+#6. Contaminação de igarapés
+```
+- center: [-1.890384, -48.7766269,15]
+- zoom:10
+L.marker([-1.890384, -48.7766269,15]).actions.addRemove(S.map)
+```
+## Projeto BioVale, PA
+
+Em nome da redução de suas emissões de CO2, a Vale tem investido na produção de biodiesel, causando conflitos territoriais, desmatamento e contaminando com agrotóxicos os igarapés que alimentam inúmeros rios da região.
+
+
+# 7. Despejo de famílias
+```
+L.marker([-1.890384, -48.7766269,15]).actions.addRemove(S.map)
+L.marker([-6.5207, -49.7873]).actions.addRemove(S.map)
+- center: [-6.5261, -49.7859]
+- zoom: 9
+```
+## Canaã dos Carajás, PA
+
+Centenas de trabalhadoras e trabalhadores rurais foram despejadas de suas terras em Canaã dos Carajás, no Pará. A Vale ganhou a reintegração de posse de uma área que pertence à União!
+
+Mais de 600 famílias vivem em áreas requeridas pela Vale, divididas em dois acampamentos, o Planalto Serra Dourada e o Grotão do Mutum. São 400 hectares de terra ocupadas com o plantio de arroz, feijão, milho, mandioca, maracujá, mamão, abóbora e hortaliças e moradia.
+
+
+# 8. Famílias reassentadas com dificuldade de acesso a água
+```
+- center: [-14.3815, 37.6611]
+- zoom: 6
+L.marker([-14.3815, 37.6611]).actions.addRemove(S.map)
+```
+
+## Moçambique
+
+Em Moçambique, 1.313 famílias reassentadas pela Vale vivem hoje com dificuldade de acesso à água, terra, energia, em terras impróprias para a agricultura e não receberam, até o momento, as indenizações integrais a que têm direito.
+
+# 9. Famílias vivendo em meio à contaminação
+```
+- center: [1.3512, -72.0483]
+- zoom: 6
+L.marker([1.3732, -72.0483]).actions.addRemove(S.map)
+```
+
+## El Hatillo, Colômbia
+
+Em El Hatillo, na Colômbia, há cinco anos, as famílias esperam pelo reassentamento e continuam a viver em meio à contaminação.
+
+# 10. Trabalho escravo
+```
+- center: [-20.2268, -43.7654]
+- zoom: 10
+L.marker([-20.2268, -43.7654]).actions.addRemove(S.map)
+```
+
+
+## Itabirito, MG
+Em 2015, em Itabirito (MG), a Vale foi responsabilizada por submeter 309 pessoas a condições análogas ao trabalho escravo.
+
+
+# 11. Um lago convertido em bacia de rejeitos
+```
+- center: [57.8448, -113.2031]
+- zoom: 3
+L.marker([57.9382, -113.2031]).actions.addRemove(S.map)
+```
+
+## Canadá
+No Canadá, onde a Vale produz níquel na mina de Voisey’s Bay, o lago Sandy Pond foi convertido em uma bacia com mais de 400 mil toneladas de dejetos, de acordo com denúncias de organizações locais.
+
+# 12. Fumaça tóxica
+```
+- center: [-4.8924, -47.4047]
+- zoom: 10
+L.marker([-4.8924, -47.4047]).actions.addRemove(S.map)
+```
+
+
+##Piquiá de Baixo, MA
+Cinco usinas processam o ferro da Vale, jogando no ar uma fumaça tóxica que, continuamente, provoca doenças e mortes.
+
+# 13. Chuva de Prata
+```
+- center: [-22.9938, -43.3521]
+- zoom: 8
+L.marker([-22.9938, -43.3521]).actions.addRemove(S.map)
+```
+
+## Santa Cruz, Rio de Janeiro
+TKCSA/Santa Cruz(RJ): com 27% de participação da Vale, elevou em 76% as emissões de CO2 na cidade do Rio de Janeiro e é responsável pelo fenômeno da “chuva de prata”, emissão de partículas causadoras de doenças na população vizinha.
+
+# 14. Mortes e doenças
+```
+- center: [-20.2858273, -40.2457802,17]
+- zoom: 10
+```
+
+## Porto de Tubarão, Grande Vitória (ES)
+Oito usinas de pelotização da Vale causam o fenômeno do pó preto do minério que invade casas, ruas e os pulmões dos moradores e moradoras da região metropolitana de Vitória.
+
+# 15. Assoreamento de nascentes
+```
+- center: [-20.0733, -43.4454]
+- zoom: 10
+L.marker([-20.0721, -43.4454]).actions.addRemove(S.map)
+```
+
+## Catas Altas, MG
+Em Catas Altas (MG), a expansão da mina São Luiz, onde a Vale extrai minério de ferro, causou o assoreamento de nascentes e a diminuição da vazão dos cursos d’água.
+
+# 16. Mariana - MG não foi acidente
+
+## #NãoFoiAcidente
+No dia 5 de novembro de 2015, uma das barragens de rejeitos da exploração de minério de ferro da Samarco, em Mariana (MG), chamada Fundão, se rompeu.
+Com isso, ao menos 40 bilhões de litros de lama se espalharam, causando também o transbordamento da barragem de Santarém, que fica abaixo da do Fundão.
+O "tsunami de lama" atingiu o subdistrito de Bento Rodrigues, arrastando veículos e destruindo centenas de casas; A lama contaminou o Rio Doce e continua se espalhando, tendo chegado até o litoral do Espírito Santo e Bahia.
+Os 16 fatos demonstram como a atividade mineradora tem consequências desastrosas ao redor do mundo.
+
+
+
+# Assim não VALE
+## Créditos
+
+
+
+Conteúdo: [Articulação internacional dos atingidos e atingidas pela Vale](https://atingidospelavale.wordpress.com/)
+
+Adaptação e desenvolvimento: CMI-Rio (Centro de Mídia Independente Rio de Janeiro)
+
+Siga no twitter: [@cmi-rio](https://twitter.com/CMIRio)
+
+Este site é uma adaptação livre do infográfico disponível em [http://bit.ly/mariananaofoiacidente](http://bit.ly/mariananaofoiacidente)
+
+,</script></body></html>
